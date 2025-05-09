@@ -1,7 +1,7 @@
 
 > **Warning**: EXPERIMENTAL. **Not ready for production use**.
 
-> **Note**: Highly influcenced by [gatway-api-rs]:https://github.com/kube-rs/gateway-api-rs
+> **Note**: Highly influcenced by [gatway-api-rs](https://github.com/kube-rs/gateway-api-rs)
 
 # Gateway API Inference Extension (Rust)
 
@@ -11,7 +11,7 @@ This project provides bindings in [Rust] for [Kubernetes] [Gateway API] [Inferen
 [Rust]:https://rust-lang.org
 [Kubernetes]:https://kubernetes.io/
 [Gateway API]:https://gateway-api.sigs.k8s.io/
-[Gateway API Inference Extension]:https://gateway-api-inference-extension.sigs.k8s.io/
+[Inference Extension]:https://gateway-api-inference-extension.sigs.k8s.io/
 
 ## Usage
 
