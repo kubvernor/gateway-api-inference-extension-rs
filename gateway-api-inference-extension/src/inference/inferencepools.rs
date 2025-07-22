@@ -4,7 +4,6 @@
 
 #[allow(unused_imports)]
 mod prelude {
-    pub use k8s_openapi::api::core::v1::ObjectReference;
     pub use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
     pub use kube::CustomResource;
     pub use schemars::JsonSchema;
@@ -16,8 +15,8 @@ use self::prelude::*;
 /// InferencePoolSpec defines the desired state of InferencePool
 #[derive(CustomResource, Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
 #[kube(
-    group = "inference.networking.x-k8s.io",
-    version = "v1alpha2",
+    group = "inference.networking.k8s.io",
+    version = "v1",
     kind = "InferencePool",
     plural = "inferencepools"
 )]
@@ -29,14 +28,14 @@ pub struct InferencePoolSpec {
     /// Extension configures an endpoint picker as an extension service.
     #[serde(rename = "extensionRef")]
     pub extension_ref: InferencePoolExtensionRef,
-    /// Selector defines a map of labels to watch model server pods
+    /// Selector defines a map of labels to watch model server Pods
     /// that should be included in the InferencePool.
     /// In some cases, implementations may translate this field to a Service selector, so this matches the simple
     /// map used for Service selectors instead of the full Kubernetes LabelSelector type.
-    /// If sepecified, it will be applied to match the model server pods in the same namespace as the InferencePool.
+    /// If specified, it will be applied to match the model server pods in the same namespace as the InferencePool.
     /// Cross namesoace selector is not supported.
     pub selector: BTreeMap<String, String>,
-    /// TargetPortNumber defines the port number to access the selected model servers.
+    /// TargetPortNumber defines the port number to access the selected model server Pods.
     /// The number must be in the range 1 to 65535.
     #[serde(rename = "targetPortNumber")]
     pub target_port_number: i32,
@@ -57,8 +56,7 @@ pub struct InferencePoolExtensionRef {
     /// The default value is "", representing the Core API group.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// Kind is the Kubernetes resource kind of the referent. For example
-    /// "Service".
+    /// Kind is the Kubernetes resource kind of the referent.
     ///
     /// Defaults to "Service" when not specified.
     ///
@@ -89,15 +87,20 @@ pub enum InferencePoolExtensionRefFailureMode {
     FailClose,
 }
 
-/// InferencePoolStatus defines the observed state of InferencePool
+/// Status defines the observed state of InferencePool.
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
 pub struct InferencePoolStatus {
     /// Parents is a list of parent resources (usually Gateways) that are
-    /// associated with the route, and the status of the InferencePool with respect to
+    /// associated with the InferencePool, and the status of the InferencePool with respect to
     /// each parent.
     ///
-    /// A maximum of 32 Gateways will be represented in this list. An empty list
-    /// means the route has not been attached to any Gateway.
+    /// A maximum of 32 Gateways will be represented in this list. When the list contains
+    /// `kind: Status, name: default`, it indicates that the InferencePool is not
+    /// associated with any Gateway and a controller must perform the following:
+    ///
+    ///  - Remove the parent when setting the "Accepted" condition.
+    ///  - Add the parent when the controller will no longer manage the InferencePool
+    ///    and no other parents exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<Vec<InferencePoolStatusParent>>,
 }
@@ -115,50 +118,23 @@ pub struct InferencePoolStatusParent {
     pub conditions: Option<Vec<Condition>>,
     /// GatewayRef indicates the gateway that observed state of InferencePool.
     #[serde(rename = "parentRef")]
-    pub parent_ref: ObjectReference,
+    pub parent_ref: InferencePoolStatusParentParentRef,
 }
 
 /// GatewayRef indicates the gateway that observed state of InferencePool.
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
 pub struct InferencePoolStatusParentParentRef {
-    /// API version of the referent.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "apiVersion"
-    )]
-    pub api_version: Option<String>,
-    /// If referring to a piece of an object instead of an entire object, this string
-    /// should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
-    /// For example, if the object reference is to a container within a pod, this would take on a value like:
-    /// "spec.containers{name}" (where "name" refers to the name of the container that triggered
-    /// the event) or if no container name is specified "spec.containers[2]" (container with
-    /// index 2 in this pod). This syntax is chosen only to have some well-defined way of
-    /// referencing a part of an object.
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "fieldPath")]
-    pub field_path: Option<String>,
-    /// Kind of the referent.
-    /// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+    /// Group is the group of the referent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Kind is kind of the referent. For example "Gateway".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
-    /// Name of the referent.
-    /// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Namespace of the referent.
-    /// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+    /// Name is the name of the referent.
+    pub name: String,
+    /// Namespace is the namespace of the referent.  If not present,
+    /// the namespace of the referent is assumed to be the same as
+    /// the namespace of the referring object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,
-    /// Specific resourceVersion to which this reference is made, if any.
-    /// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "resourceVersion"
-    )]
-    pub resource_version: Option<String>,
-    /// UID of the referent.
-    /// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub uid: Option<String>,
 }
