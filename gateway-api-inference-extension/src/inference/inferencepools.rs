@@ -15,8 +15,8 @@ use self::prelude::*;
 /// InferencePoolSpec defines the desired state of InferencePool
 #[derive(CustomResource, Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
 #[kube(
-    group = "inference.networking.k8s.io",
-    version = "v1",
+    group = "inference.networking.x-k8s.io",
+    version = "v1alpha2",
     kind = "InferencePool",
     plural = "inferencepools"
 )]
@@ -28,14 +28,14 @@ pub struct InferencePoolSpec {
     /// Extension configures an endpoint picker as an extension service.
     #[serde(rename = "extensionRef")]
     pub extension_ref: InferencePoolExtensionRef,
-    /// Selector defines a map of labels to watch model server Pods
+    /// Selector defines a map of labels to watch model server pods
     /// that should be included in the InferencePool.
     /// In some cases, implementations may translate this field to a Service selector, so this matches the simple
     /// map used for Service selectors instead of the full Kubernetes LabelSelector type.
-    /// If specified, it will be applied to match the model server pods in the same namespace as the InferencePool.
+    /// If sepecified, it will be applied to match the model server pods in the same namespace as the InferencePool.
     /// Cross namesoace selector is not supported.
     pub selector: BTreeMap<String, String>,
-    /// TargetPortNumber defines the port number to access the selected model server Pods.
+    /// TargetPortNumber defines the port number to access the selected model servers.
     /// The number must be in the range 1 to 65535.
     #[serde(rename = "targetPortNumber")]
     pub target_port_number: i32,
@@ -56,7 +56,8 @@ pub struct InferencePoolExtensionRef {
     /// The default value is "", representing the Core API group.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// Kind is the Kubernetes resource kind of the referent.
+    /// Kind is the Kubernetes resource kind of the referent. For example
+    /// "Service".
     ///
     /// Defaults to "Service" when not specified.
     ///

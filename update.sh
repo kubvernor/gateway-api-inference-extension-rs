@@ -32,10 +32,12 @@ mkdir -p $APIS_DIR/inference/
 
 echo "// WARNING! generated file do not edit" > $APIS_DIR/inference/mod.rs
 
+
+
 for API in "${APIS[@]}"
 do
     echo "generating api ${API}"
-    curl -sSL "https://raw.githubusercontent.com/kubvernor/gateway-api-inference-extension/refs/heads/main/config/crd/bases/inference.networking.k8s.io_inferencepools.yaml" | kopium --schema=derived --derive=JsonSchema --derive=Default --derive=PartialEq --docs -f - > $APIS_DIR/inference/${API}.rs
+    curl -sSL "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v0.5.1/config/crd/bases/inference.networking.x-k8s.io_${API}.yaml" | kopium --schema=derived --derive=JsonSchema --derive=Default --derive=PartialEq --docs -f - > $APIS_DIR/inference/${API}.rs
     echo "pub mod ${API};" >> $APIS_DIR/inference/mod.rs
 done
 

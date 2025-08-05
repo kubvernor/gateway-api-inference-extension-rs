@@ -8,133 +8,141 @@ mod prelude {
     pub use kube::CustomResource;
     pub use schemars::JsonSchema;
     pub use serde::{Deserialize, Serialize};
-    pub use std::collections::BTreeMap;
 }
 use self::prelude::*;
 
-/// InferencePoolSpec defines the desired state of InferencePool
+/// InferenceModelSpec represents the desired state of a specific model use case. This resource is
+/// managed by the "Inference Workload Owner" persona.
+///
+/// The Inference Workload Owner persona is someone that trains, verifies, and
+/// leverages a large language model from a model frontend, drives the lifecycle
+/// and rollout of new versions of those models, and defines the specific
+/// performance and latency goals for the model. These workloads are
+/// expected to operate within an InferencePool sharing compute capacity with other
+/// InferenceModels, defined by the Inference Platform Admin.
+///
+/// InferenceModel's modelName (not the ObjectMeta name) is unique for a given InferencePool,
+/// if the name is reused, an error will be shown on the status of a
+/// InferenceModel that attempted to reuse. The oldest InferenceModel, based on
+/// creation timestamp, will be selected to remain valid. In the event of a race
+/// condition, one will be selected at random.
 #[derive(CustomResource, Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
 #[kube(
-    group = "inference.networking.k8s.io",
-    version = "v1",
-    kind = "InferencePool",
-    plural = "inferencepools"
+    group = "inference.networking.x-k8s.io",
+    version = "v1alpha2",
+    kind = "InferenceModel",
+    plural = "inferencemodels"
 )]
 #[kube(namespaced)]
-#[kube(status = "InferencePoolStatus")]
+#[kube(status = "InferenceModelStatus")]
 #[kube(derive = "Default")]
 #[kube(derive = "PartialEq")]
-pub struct InferencePoolSpec {
-    /// Extension configures an endpoint picker as an extension service.
-    #[serde(rename = "extensionRef")]
-    pub extension_ref: InferencePoolExtensionRef,
-    /// Selector defines a map of labels to watch model server Pods
-    /// that should be included in the InferencePool.
-    /// In some cases, implementations may translate this field to a Service selector, so this matches the simple
-    /// map used for Service selectors instead of the full Kubernetes LabelSelector type.
-    /// If specified, it will be applied to match the model server pods in the same namespace as the InferencePool.
-    /// Cross namesoace selector is not supported.
-    pub selector: BTreeMap<String, String>,
-    /// TargetPortNumber defines the port number to access the selected model server Pods.
-    /// The number must be in the range 1 to 65535.
-    #[serde(rename = "targetPortNumber")]
-    pub target_port_number: i32,
-}
-
-/// Extension configures an endpoint picker as an extension service.
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
-pub struct InferencePoolExtensionRef {
-    /// Configures how the gateway handles the case when the extension is not responsive.
-    /// Defaults to failClose.
+pub struct InferenceModelSpec {
+    /// Criticality defines how important it is to serve the model compared to other models referencing the same pool.
+    /// Criticality impacts how traffic is handled in resource constrained situations. It handles this by
+    /// queuing or rejecting requests of lower criticality. InferenceModels of an equivalent Criticality will
+    /// fairly share resources over throughput of tokens. In the future, the metric used to calculate fairness,
+    /// and the proportionality of fairness will be configurable.
+    ///
+    /// Default values for this field will not be set, to allow for future additions of new field that may 'one of' with this field.
+    /// Any implementations that may consume this field may treat an unset value as the 'Standard' range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub criticality: Option<InferenceModelCriticality>,
+    /// ModelName is the name of the model as it will be set in the "model" parameter for an incoming request.
+    /// ModelNames must be unique for a referencing InferencePool
+    /// (names can be reused for a different pool in the same cluster).
+    /// The modelName with the oldest creation timestamp is retained, and the incoming
+    /// InferenceModel's Ready status is set to false with a corresponding reason.
+    /// In the rare case of a race condition, one Model will be selected randomly to be considered valid, and the other rejected.
+    /// Names can be reserved without an underlying model configured in the pool.
+    /// This can be done by specifying a target model and setting the weight to zero,
+    /// an error will be returned specifying that no valid target model is found.
+    #[serde(rename = "modelName")]
+    pub model_name: String,
+    /// PoolRef is a reference to the inference pool, the pool must exist in the same namespace.
+    #[serde(rename = "poolRef")]
+    pub pool_ref: InferenceModelPoolRef,
+    /// TargetModels allow multiple versions of a model for traffic splitting.
+    /// If not specified, the target model name is defaulted to the modelName parameter.
+    /// modelName is often in reference to a LoRA adapter.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        rename = "failureMode"
+        rename = "targetModels"
     )]
-    pub failure_mode: Option<InferencePoolExtensionRefFailureMode>,
+    pub target_models: Option<Vec<InferenceModelTargetModels>>,
+}
+
+/// InferenceModelSpec represents the desired state of a specific model use case. This resource is
+/// managed by the "Inference Workload Owner" persona.
+///
+/// The Inference Workload Owner persona is someone that trains, verifies, and
+/// leverages a large language model from a model frontend, drives the lifecycle
+/// and rollout of new versions of those models, and defines the specific
+/// performance and latency goals for the model. These workloads are
+/// expected to operate within an InferencePool sharing compute capacity with other
+/// InferenceModels, defined by the Inference Platform Admin.
+///
+/// InferenceModel's modelName (not the ObjectMeta name) is unique for a given InferencePool,
+/// if the name is reused, an error will be shown on the status of a
+/// InferenceModel that attempted to reuse. The oldest InferenceModel, based on
+/// creation timestamp, will be selected to remain valid. In the event of a race
+/// condition, one will be selected at random.
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, PartialEq)]
+pub enum InferenceModelCriticality {
+    Critical,
+    Standard,
+    Sheddable,
+}
+
+/// PoolRef is a reference to the inference pool, the pool must exist in the same namespace.
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
+pub struct InferenceModelPoolRef {
     /// Group is the group of the referent.
-    /// The default value is "", representing the Core API group.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// Kind is the Kubernetes resource kind of the referent.
-    ///
-    /// Defaults to "Service" when not specified.
-    ///
-    /// ExternalName services can refer to CNAME DNS records that may live
-    /// outside of the cluster and as such are difficult to reason about in
-    /// terms of conformance. They also may not be safe to forward to (see
-    /// CVE-2021-25740 for more information). Implementations MUST NOT
-    /// support ExternalName Services.
+    /// Kind is kind of the referent. For example "InferencePool".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// Name is the name of the referent.
     pub name: String,
-    /// The port number on the service running the extension. When unspecified,
-    /// implementations SHOULD infer a default value of 9002 when the Kind is
-    /// Service.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        rename = "portNumber"
-    )]
-    pub port_number: Option<i32>,
 }
 
-/// Extension configures an endpoint picker as an extension service.
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, PartialEq)]
-pub enum InferencePoolExtensionRefFailureMode {
-    FailOpen,
-    FailClose,
-}
-
-/// Status defines the observed state of InferencePool.
+/// TargetModel represents a deployed model or a LoRA adapter. The
+/// Name field is expected to match the name of the LoRA adapter
+/// (or base model) as it is registered within the model server. Inference
+/// Gateway assumes that the model exists on the model server and it's the
+/// responsibility of the user to validate a correct match. Should a model fail
+/// to exist at request time, the error is processed by the Inference Gateway
+/// and emitted on the appropriate InferenceModel object.
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
-pub struct InferencePoolStatus {
-    /// Parents is a list of parent resources (usually Gateways) that are
-    /// associated with the InferencePool, and the status of the InferencePool with respect to
-    /// each parent.
+pub struct InferenceModelTargetModels {
+    /// Name is the name of the adapter or base model, as expected by the ModelServer.
+    pub name: String,
+    /// Weight is used to determine the proportion of traffic that should be
+    /// sent to this model when multiple target models are specified.
     ///
-    /// A maximum of 32 Gateways will be represented in this list. When the list contains
-    /// `kind: Status, name: default`, it indicates that the InferencePool is not
-    /// associated with any Gateway and a controller must perform the following:
+    /// Weight defines the proportion of requests forwarded to the specified
+    /// model. This is computed as weight/(sum of all weights in this
+    /// TargetModels list). For non-zero values, there may be some epsilon from
+    /// the exact proportion defined here depending on the precision an
+    /// implementation supports. Weight is not a percentage and the sum of
+    /// weights does not need to equal 100.
     ///
-    ///  - Remove the parent when setting the "Accepted" condition.
-    ///  - Add the parent when the controller will no longer manage the InferencePool
-    ///    and no other parents exist.
+    /// If a weight is set for any targetModel, it must be set for all targetModels.
+    /// Conversely weights are optional, so long as ALL targetModels do not specify a weight.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<Vec<InferencePoolStatusParent>>,
+    pub weight: Option<i32>,
 }
 
-/// PoolStatus defines the observed state of InferencePool from a Gateway.
+/// InferenceModelStatus defines the observed state of InferenceModel
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
-pub struct InferencePoolStatusParent {
-    /// Conditions track the state of the InferencePool.
+pub struct InferenceModelStatus {
+    /// Conditions track the state of the InferenceModel.
     ///
     /// Known condition types are:
     ///
     /// * "Accepted"
-    /// * "ResolvedRefs"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conditions: Option<Vec<Condition>>,
-    /// GatewayRef indicates the gateway that observed state of InferencePool.
-    #[serde(rename = "parentRef")]
-    pub parent_ref: InferencePoolStatusParentParentRef,
-}
-
-/// GatewayRef indicates the gateway that observed state of InferencePool.
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, Default, PartialEq)]
-pub struct InferencePoolStatusParentParentRef {
-    /// Group is the group of the referent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub group: Option<String>,
-    /// Kind is kind of the referent. For example "Gateway".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    /// Name is the name of the referent.
-    pub name: String,
-    /// Namespace is the namespace of the referent.  If not present,
-    /// the namespace of the referent is assumed to be the same as
-    /// the namespace of the referring object.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub namespace: Option<String>,
 }
